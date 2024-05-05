@@ -8,7 +8,7 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
 
 
-data_set.dropna(subset=['category_code' , 'brand'], inplace=True)
+data_set.dropna(subset=['category_code' , 'brand'], inplace=True) # NaN's
 
 
 print("Number of rows in the dataset:", len(data_set))
