@@ -1,5 +1,8 @@
 import pandas as pd
 from sklearn.cluster import KMeans
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import GaussianNB
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import matplotlib.pyplot as plt
 import scipy.cluster.hierarchy as sch
@@ -88,8 +91,7 @@ plt.title('Customer Segmentation - Price Distribution')
 plt.legend()
 plt.show()
 
-from sklearn.metrics import silhouette_score
-
+from sklearn.metrics import silhouette_score, classification_report
 
 silhouette_scores = []
 for k in range(2, 10):
@@ -150,3 +152,27 @@ top_customer = customer_spending.loc[customer_spending['price'].idxmax()]
 print("En çok harcama yapan müşteri ID:", top_customer['user_id'])
 print("Toplam harcama miktarı:", top_customer['price'])
 
+
+
+# Random Forest
+data_set = data_set.dropna()
+X = data_set[['product_id', 'category_id', 'price']]
+y = data_set['user_id']
+X_scaled = scaler.fit_transform(X)
+
+
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
+rf_classifier.fit(X_train, y_train)
+
+
+y_pred = rf_classifier.predict(X_test)
+print("denemeeeeeee:",classification_report(y_test, y_pred, zero_division=1))
+
+# Bayes
+nb_classifier = GaussianNB()
+nb_classifier.fit(X_train, y_train)
+
+y_pred = nb_classifier.predict(X_test)
+print("deneme bayesss",classification_report(y_test, y_pred, zero_division=1))
