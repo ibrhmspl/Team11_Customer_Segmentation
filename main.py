@@ -7,6 +7,9 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 import matplotlib.pyplot as plt
 import scipy.cluster.hierarchy as sch
 import seaborn as sns
+from sklearn.linear_model import LinearRegression
+import numpy as np
+
 
 data_set = pd.read_csv('2019-Oct.csv', nrows=1000)
 
@@ -176,3 +179,43 @@ nb_classifier.fit(X_train, y_train)
 
 y_pred = nb_classifier.predict(X_test)
 print("deneme bayesss",classification_report(y_test, y_pred, zero_division=1))
+
+
+#Replicating Human Behaviour Faruk
+users_with_purchase = data_set.groupby('user_id').filter(lambda x: 'purchase' in x['event_type'].values)
+
+def get_user_data(user_id, data):
+    user_data = data[data['user_id'] == user_id]
+    purchase_indices = user_data[user_data['event_type'] == 'purchase'].index
+
+    interaction_data = pd.DataFrame()
+    for idx in purchase_indices:
+        interaction_data = pd.concat([interaction_data, user_data.loc[:idx]])
+    return interaction_data
+
+
+def train_user_model(user_id, data):
+    user_data = get_user_data(user_id, data)
+    X = np.arange(len(user_data)).reshape(-1, 1)
+    y = user_data['price'].values
+    model = LinearRegression()
+    model.fit(X, y)
+    return model
+
+
+def predict_next_price(user_id, current_price, data):
+    model = train_user_model(user_id, data)
+    last_interaction_index = len(data[data['user_id'] == user_id]) - 1
+    next_interaction_index = last_interaction_index + 1
+    predicted_price = model.predict(np.array([[next_interaction_index]]))
+    return predicted_price
+
+
+user_id = 551377651
+current_price = 642
+predicted_price = predict_next_price(user_id, current_price, users_with_purchase)
+range_ = (current_price - predicted_price)/10
+min_ = predicted_price - range_
+max_ = predicted_price + range_
+print(f"Predicted next price for user {user_id}: {predicted_price}")
+print(f"Next View Item Range for User {user_id}: {min_} to {max_}")
