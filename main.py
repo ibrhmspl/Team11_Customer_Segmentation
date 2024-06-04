@@ -13,10 +13,19 @@ import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import cross_val_score
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
 
-data_set = pd.read_csv('2019-Oct.csv', nrows=1000)
 
 
+
+data_set = pd.read_csv('2019-Oct.csv', nrows=6000)
+
+# Yalnızca "purchase" işlemlerini filtreleyelim
+purchase_df = data_set[data_set['event_type'] == 'purchase']
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
@@ -97,7 +106,8 @@ plt.title('Customer Segmentation - Price Distribution')
 plt.legend()
 plt.show()
 
-from sklearn.metrics import silhouette_score, classification_report
+from sklearn.metrics import silhouette_score, classification_report, f1_score, recall_score, precision_score, \
+    accuracy_score
 
 silhouette_scores = []
 for k in range(2, 10):
@@ -132,8 +142,6 @@ plt.xticks(rotation=45, ha='right')
 plt.tight_layout()
 plt.show()
 
-
-
 #Müşteri sadakati analizi için gerekli verileri hazırla
 customer_data = data_set.groupby('user_id').agg({'event_time': 'count', 'price': 'sum'}).reset_index()
 customer_data.columns = ['user_id', 'total_transactions', 'total_spent']
@@ -157,8 +165,6 @@ top_customer = customer_spending.loc[customer_spending['price'].idxmax()]
 
 print("En çok harcama yapan müşteri ID:", top_customer['user_id'])
 print("Toplam harcama miktarı:", top_customer['price'])
-
-
 
 # Random Forest
 data_set = data_set.dropna()
@@ -297,3 +303,144 @@ min_ = predicted_price - range_
 max_ = predicted_price + range_
 print(f"Predicted next price for user {user_id}: {predicted_price}")
 print(f"Next View Item Range for User {user_id}: {min_} to {max_}")
+# Her kullanıcı için toplam alışveriş tutarını hesaplayalım
+user_purchase_total = purchase_df.groupby('user_id')['price'].sum().reset_index()
+user_purchase_total.columns = ['user_id', 'total_spent']
+
+# Her kullanıcı için alışveriş yapma sıklığını (alışveriş sayısı) hesaplayalım
+user_purchase_freq = purchase_df.groupby('user_id')['event_time'].count().reset_index()
+user_purchase_freq.columns = ['user_id', 'purchase_count']
+
+# Toplam tutar ve sıklık verilerini birleştirelim
+user_stats = pd.merge(user_purchase_total, user_purchase_freq, on='user_id')
+
+#########################################################################################################
+# 4 cluster olan kmeans ile segmentasyon
+kmeans = KMeans(n_clusters=4, random_state=42)#4 cluster
+user_stats['segment'] = kmeans.fit_predict(user_stats[['total_spent', 'purchase_count']])#kmeans için parametreler
+
+
+segment_summary = user_stats.groupby('segment')[['total_spent', 'purchase_count']].mean()#segment parametrlerinin ortalama degerleri
+print("Segmentlerin toplam harcama ve tekrarlanan alışveriş ortalama değeri")
+print(segment_summary)#ortalama degerleri yazdirma
+
+# Her bir segmentteki kullanici sayisi
+segment_counts = user_stats['segment'].value_counts()
+print("Segmentlerdeki kullanıcı sayıları")
+print(segment_counts)
+
+# LSTM için veri hazırlama
+user_series = []
+data_set['event_time'] = pd.to_datetime(data_set['event_time'])
+
+for user_id, user_data in purchase_df.groupby('user_id'):
+    user_data = user_data.sort_values(by='event_time')
+    user_data['time_diff'] = data_set['event_time'].diff().dt.total_seconds().fillna(0)
+    user_data['cumulative_spent'] = user_data['price'].cumsum()
+
+    # LSTM parametreleri
+    user_series.append(user_data[['time_diff', 'cumulative_spent']].values)
+
+max_len = max(len(series) for series in user_series)#en uzun zaman serisine gore digerleri de ayni uzunluga getiriliyor
+user_series_padded = np.array([np.pad(series, ((0, max_len - len(series)), (0, 0)), 'constant') for series in user_series])
+user_stats[['total_spent', 'purchase_count']] = scaler.fit_transform(user_stats[['total_spent', 'purchase_count']])
+
+#modele verebilmek icin normalizasyon
+X = user_stats[['total_spent', 'purchase_count']].values.reshape((-1, 1, 2))
+y = user_stats['segment'].values.reshape((-1, 1))
+
+model = Sequential()#LSTM modeli
+model.add(LSTM(64, input_shape=(max_len, 2), return_sequences=True))#parametreler time_diff ve cumulative_spent
+model.add(LSTM(32, return_sequences=False))
+model.add(Dense(4, activation='softmax'))  # 4 segment olusturuyoruz
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+y = tf.keras.utils.to_categorical(y, 4)
+
+model.fit(X, y, epochs=50, batch_size=32, validation_split=0.2)#egitim adımı
+
+# Segment tahminleri yapalım
+segments = model.predict(X)#test seti prediction
+segment_labels = np.argmax(segments, axis=1)
+true_labels = np.argmax(y, axis=1)
+
+
+
+# onceki segment degerleri user_stats icinde segemnt columnunda tutuluyordu
+#LSTM segment degerleri user_segments icinde tutuluyor
+user_segments = pd.DataFrame({'user_id': purchase_df['user_id'].unique(), 'segment': segment_labels})
+
+# Kullanıcıların segmentlerini gerekli sutuna ekleme
+user_segments_df = user_segments.copy()  #
+user_stats_subset = user_stats[['user_id', 'total_spent', 'purchase_count']]
+user_segments_df = pd.merge(user_segments_df, user_stats_subset, on='user_id', how='left')
+
+#KMeans icin gorsellestirme
+# Her segmentin toplam harcama ve alışveriş sıklığı ortalamalarını hesaplayalım
+segment_summary = user_stats.groupby('segment')[['total_spent', 'purchase_count']].mean().reset_index()
+
+# Toplam harcama ve alışveriş sıklığına göre segmentleri görselleştirelim
+plt.figure(figsize=(12, 6))
+sns.barplot(x='segment', y='total_spent', data=segment_summary)
+plt.title('Segmentlere Göre Ortalama Toplam Harcama')
+plt.xlabel('Segment')
+plt.ylabel('Ortalama Toplam Harcama')
+plt.show()
+
+plt.figure(figsize=(12, 6))
+sns.barplot(x='segment', y='purchase_count', data=segment_summary)
+plt.title('Segmentlere Göre Ortalama Alışveriş Sıklığı')
+plt.xlabel('Segment')
+plt.ylabel('Ortalama Alışveriş Sıklığı')
+plt.show()
+
+# Her segmentteki kullanıcı sayısını görselleştirelim
+segment_counts = user_segments['segment'].value_counts().reset_index()
+segment_counts.columns = ['segment', 'user_count']
+
+plt.figure(figsize=(12, 6))
+sns.barplot(x='segment', y='user_count', data=segment_counts)
+plt.title('Segmentlere Göre Kullanıcı Sayısı')
+plt.xlabel('Segment')
+plt.ylabel('Kullanıcı Sayısı')
+plt.show()
+
+# Metriklerin hesaplanması
+accuracy = accuracy_score(true_labels, segment_labels)
+precision = precision_score(true_labels, segment_labels, average='weighted')
+recall = recall_score(true_labels, segment_labels, average='weighted')
+f1 = f1_score(true_labels, segment_labels, average='weighted')
+
+# Sonuc metrikleri
+print(f'Accuracy: {accuracy:.4f}')
+print(f'Precision: {precision:.4f}')
+print(f'Recall: {recall:.4f}')
+
+#LSTM icin gorsellestirme
+segment_summary = user_segments.groupby('segment')[['total_spent', 'purchase_count']].mean().reset_index()
+
+# Toplam harcama ve alisveris sıkligina gore segmentler
+plt.figure(figsize=(12, 6))
+sns.barplot(x='segment', y='total_spent', data=segment_summary)
+plt.title('Segmentlere Göre Ortalama Toplam Harcama')
+plt.xlabel('Segment')
+plt.ylabel('Ortalama Toplam Harcama')
+plt.show()
+
+plt.figure(figsize=(12, 6))
+sns.barplot(x='segment', y='purchase_count', data=segment_summary)
+plt.title('Segmentlere Göre Ortalama Alışveriş Sıklığı')
+plt.xlabel('Segment')
+plt.ylabel('Ortalama Alışveriş Sıklığı')
+plt.show()
+
+# Her segmentteki kullanici sayisi
+segment_counts = user_segments['segment'].value_counts().reset_index()
+segment_counts.columns = ['segment', 'user_count']
+
+plt.figure(figsize=(12, 6))
+sns.barplot(x='segment', y='user_count', data=segment_counts)
+plt.title('Segmentlere Göre Kullanıcı Sayısı')
+plt.xlabel('Segment')
+plt.ylabel('Kullanıcı Sayısı')
+plt.show()
