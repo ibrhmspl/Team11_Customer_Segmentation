@@ -6,6 +6,7 @@ from sklearn.naive_bayes import GaussianNB
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import matplotlib.pyplot as plt
 import scipy.cluster.hierarchy as sch
+from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
 from sklearn.linear_model import LinearRegression
 import numpy as np
@@ -160,8 +161,6 @@ print("Toplam harcama miktarı:", top_customer['price'])
 
 
 # Random Forest
-from sklearn.metrics import classification_report, confusion_matrix
-import seaborn as sns
 data_set = data_set.dropna()
 X = data_set[['product_id', 'category_id', 'price']]
 y = data_set['user_id']
@@ -205,20 +204,17 @@ plt.show()
 
 knn = KNeighborsClassifier(n_neighbors=5)
 
-# Fit the model
+
 knn.fit(X_train, y_train)
 
 
-# Predict the labels for the test set
 y_pred = knn.predict(X_test)
 
-# Calculate accuracy
+
 accuracy = accuracy_score(y_test, y_pred)
 print(f'Accuracy: {accuracy}')
 
 
-
-# Find the optimal number of neighbors
 accuracy_list = []
 
 for k in range(1, 31):
@@ -226,23 +222,23 @@ for k in range(1, 31):
     scores = cross_val_score(knn, X_train, y_train, cv=10)
     accuracy_list.append(scores.mean())
 
-# Plot accuracy vs. number of neighbors
+
 plt.plot(range(1, 31), accuracy_list)
 plt.xlabel('Number of Neighbors (k)')
 plt.ylabel('Cross-Validated Accuracy')
 plt.title('KNN Classifier Accuracy')
 plt.show()
 
-# Choose the k with the highest accuracy
+
 optimal_k = accuracy_list.index(max(accuracy_list)) + 1
 print(f'Optimal number of neighbors: {optimal_k}')
 
-# Retrain the model with optimal k
+# en uygun k değerini bul
 knn_optimal = KNeighborsClassifier(n_neighbors=optimal_k)
 knn_optimal.fit(X_train, y_train)
 y_pred_optimal = knn_optimal.predict(X_test)
 
-# Re-evaluate the model
+
 accuracy_optimal = accuracy_score(y_test, y_pred_optimal)
 print(f'Optimal Accuracy: {accuracy_optimal}')
 
