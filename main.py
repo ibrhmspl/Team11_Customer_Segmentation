@@ -184,17 +184,24 @@ print("deneme bayesss",classification_report(y_test, y_pred, zero_division=1))
 #Replicating Human Behaviour Faruk
 users_with_purchase = data_set.groupby('user_id').filter(lambda x: 'purchase' in x['event_type'].values)
 
+#get_user_data, brings the data of customers that has made a purchase
+
 def get_user_data(user_id, data):
+    #
     user_data = data[data['user_id'] == user_id]
     purchase_indices = user_data[user_data['event_type'] == 'purchase'].index
+    # If that customer made a purchase; Otherwise this function will not be correctly executed resulted in error.
 
     interaction_data = pd.DataFrame()
     for idx in purchase_indices:
         interaction_data = pd.concat([interaction_data, user_data.loc[:idx]])
+        #brings all of the instances of that UserID (Either View or Purchase doesn't matter if user made a single purchase)
     return interaction_data
+#returns in the form of a dataframe with that customer instances
 
-
+#train_user_model, For a single user trains the linear regression model and returns it for further use
 def train_user_model(user_id, data):
+    #the function above that brings the necessary data
     user_data = get_user_data(user_id, data)
     X = np.arange(len(user_data)).reshape(-1, 1)
     y = user_data['price'].values
@@ -203,6 +210,7 @@ def train_user_model(user_id, data):
     return model
 
 
+#predict_next_price, Using the function above to train the model predicts the next possible price. According to a given price
 def predict_next_price(user_id, current_price, data):
     model = train_user_model(user_id, data)
     last_interaction_index = len(data[data['user_id'] == user_id]) - 1
@@ -210,7 +218,8 @@ def predict_next_price(user_id, current_price, data):
     predicted_price = model.predict(np.array([[next_interaction_index]]))
     return predicted_price
 
-
+#Testing Replicating Human Behaviour
+#Handpicked user that made a purchase.
 user_id = 551377651
 current_price = 642
 predicted_price = predict_next_price(user_id, current_price, users_with_purchase)
