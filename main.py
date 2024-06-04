@@ -6,10 +6,13 @@ from sklearn.naive_bayes import GaussianNB
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import matplotlib.pyplot as plt
 import scipy.cluster.hierarchy as sch
+from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
 from sklearn.linear_model import LinearRegression
 import numpy as np
-
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.model_selection import cross_val_score
 
 data_set = pd.read_csv('2019-Oct.csv', nrows=1000)
 
@@ -171,15 +174,81 @@ rf_classifier.fit(X_train, y_train)
 
 
 y_pred = rf_classifier.predict(X_test)
-print("denemeeeeeee:",classification_report(y_test, y_pred, zero_division=1))
+print("RandomForest:",classification_report(y_test, y_pred, zero_division=1))
+feature_importances = rf_classifier.feature_importances_
+features = ['product_id', 'category_id', 'price']
+plt.figure(figsize=(10, 6))
+sns.barplot(x=features, y=feature_importances)
+plt.title('Feature Importance')
+plt.xlabel('Features')
+plt.ylabel('Importance')
+plt.show()
 
 # Bayes
 nb_classifier = GaussianNB()
 nb_classifier.fit(X_train, y_train)
 
 y_pred = nb_classifier.predict(X_test)
-print("deneme bayesss",classification_report(y_test, y_pred, zero_division=1))
+print("Naive Bayes",classification_report(y_test, y_pred, zero_division=1))
 
+feature_importances = rf_classifier.feature_importances_
+features = ['product_id', 'category_id', 'price']
+plt.figure(figsize=(10, 6))
+sns.barplot(x=features, y=feature_importances)
+plt.title('Feature Importance')
+plt.xlabel('Features')
+plt.ylabel('Importance')
+plt.show()
+
+#KNN
+
+knn = KNeighborsClassifier(n_neighbors=5)
+
+
+knn.fit(X_train, y_train)
+
+
+y_pred = knn.predict(X_test)
+
+
+accuracy = accuracy_score(y_test, y_pred)
+print(f'Accuracy: {accuracy}')
+
+
+accuracy_list = []
+
+for k in range(1, 31):
+    knn = KNeighborsClassifier(n_neighbors=k)
+    scores = cross_val_score(knn, X_train, y_train, cv=10)
+    accuracy_list.append(scores.mean())
+
+
+plt.plot(range(1, 31), accuracy_list)
+plt.xlabel('Number of Neighbors (k)')
+plt.ylabel('Cross-Validated Accuracy')
+plt.title('KNN Classifier Accuracy')
+plt.show()
+
+
+optimal_k = accuracy_list.index(max(accuracy_list)) + 1
+print(f'Optimal number of neighbors: {optimal_k}')
+
+# en uygun k değerini bul
+knn_optimal = KNeighborsClassifier(n_neighbors=optimal_k)
+knn_optimal.fit(X_train, y_train)
+y_pred_optimal = knn_optimal.predict(X_test)
+
+
+accuracy_optimal = accuracy_score(y_test, y_pred_optimal)
+print(f'Optimal Accuracy: {accuracy_optimal}')
+
+conf_matrix_optimal = confusion_matrix(y_test, y_pred_optimal)
+print('Optimal Confusion Matrix:')
+print(conf_matrix_optimal)
+
+class_report_optimal = classification_report(y_test, y_pred_optimal)
+print('Optimal Classification Report:')
+print(class_report_optimal)
 
 #Replicating Human Behaviour Faruk
 users_with_purchase = data_set.groupby('user_id').filter(lambda x: 'purchase' in x['event_type'].values)
